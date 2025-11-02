@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BELOURA Courier - Rastreo</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0d1b2a">
+
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <img src="icons/logo.png" alt="BELOURA" class="logo">
+      <h1>BELOURA</h1>
+	<h1>Courier</h1>
+    </div>
+    <p class="subtitle">Rastreo de Envíos</p>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <label for="trackingInput" class="label">Número de guía BELOURA</label>
+      <div class="search-row">
+        <input id="trackingInput" type="text" placeholder="Ej: BLR-2025-000123" />
+        <button id="searchBtn">🔍</button>
+      </div>
+      <p class="hint">Ingresa tu número de guía (formato BLRGNNN).</p>
+    </section>
+
+    <section id="result" class="card hidden">
+      <h2>Resultado</h2>
+      <div id="statusBox" class="status-box">
+        <div class="status-line"><span class="status-label">📦 Estado:</span> <span id="statusText">—</span></div>
+        <div class="status-line"><span class="status-label">🗓️ Última actualización:</span> <span id="updatedText">—</span></div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+
+      <div class="actions">
+        <a id="whatsappBtn" class="btn" target="_blank">Contactar por WhatsApp</a>
+      </div>
+    </section>
+
+    <section id="notFound" class="card hidden error">
+      <h2>No encontrado</h2>
+      <p>Revisa tu número de guía o contáctanos por WhatsApp.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© <span id="year"></span> BELOURA Courier</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
