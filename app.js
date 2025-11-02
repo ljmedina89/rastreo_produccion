@@ -1,7 +1,15 @@
+/* =======================
+   BELOURA • Rastreo (app.js)
+   - Usa JSONP (sin CORS) contra Apps Script
+   - Llama action=track
+   - Normaliza respuesta a tu UI actual
+   ======================= */
+
 const CONFIG = {
   GAS_WEB_APP_URL: "https://script.google.com/macros/s/AKfycbyA8sYGOb_QqotgF-I23ygcHhE4ytGmJk5Z4ifmcvSpbENFa5c9fgfhMDfrW9EYPv1Xlg/exec",
   WHATSAPP_NUMBER: "19726070561",
-  // Si usas token en Apps Script, colócalo aquí y se agregará a la URL:
+  // Si protegiste create/invoice con token, track normalmente es público.
+  // Si tu backend exige token también para track, colócalo aquí:
   TOKEN: "" // ej: "MI_TOKEN_SECRETO"
 };
 
@@ -26,25 +34,74 @@ function fmtDate(s){
 }
 
 function iconFor(title=""){
-  const t = title.toLowerCase();
+  const t = (title||"").toLowerCase();
   if (t.includes("recibido") || t.includes("arlington")) return "📦";
-  if (t.includes("ups") || t.includes("miami")) return "🚚";
-  if (t.includes("vuelo") || t.includes("a ecuador") || t.includes("aéreo")) return "✈️";
+  if (t.includes("ups") || t.includes("miami") || t.includes("transito") || t.includes("tránsito")) return "🚚";
+  if (t.includes("vuelo") || t.includes("ecuador") || t.includes("aéreo")) return "✈️";
   if (t.includes("consolidado") || t.includes("consolidación")) return "🧱";
   if (t.includes("aduana") || t.includes("liberación")) return "🛃";
-  if (t.includes("disponible") || t.includes("entregado")) return "✅";
+  if (t.includes("entregado") || t.includes("disponible")) return "✅";
   return "📍";
 }
 
-async function fetchTracking(code){
-  const url = new URL(CONFIG.GAS_WEB_APP_URL);
-  url.searchParams.set("code", code.trim());
-  if (CONFIG.TOKEN) url.searchParams.set("token", CONFIG.TOKEN);
-  const res = await fetch(url, { method: "GET", cache: "no-store" });
-  if(!res.ok) throw new Error("Error de servidor");
-  return res.json();
+/* =============== JSONP helper (evita CORS) =============== */
+function jsonp(url, params = {}) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Math.random().toString(36).slice(2);
+    params.callback = cb;
+    const qs = Object.entries(params)
+      .map(([k, v]) => k + '=' + encodeURIComponent(typeof v === 'string' ? v : JSON.stringify(v)))
+      .join('&');
+    const s = document.createElement('script');
+    s.src = url + (url.includes('?') ? '&' : '?') + qs;
+    s.onerror = () => reject(new Error('JSONP error'));
+    window[cb] = (data) => { resolve(data); delete window[cb]; document.body.removeChild(s); };
+    document.body.appendChild(s);
+  });
 }
 
+/* =============== Backend call =============== */
+async function fetchTracking(code){
+  const params = { action: 'track', code: code.trim() };
+  if (CONFIG.TOKEN) params.token = CONFIG.TOKEN;
+
+  const res = await jsonp(CONFIG.GAS_WEB_APP_URL, params);
+
+  // Si tu backend ya devuelve {found:bool,...} respétalo:
+  if ('found' in res) return res;
+
+  // Si devuelve el formato que te propuse: { ok, status, lastUpdate, timeline[] }
+  if ('ok' in res) {
+    return {
+      found: !!res.ok,
+      status: res.status || '—',
+      client: res.client || '—',           // si no lo envías en track, queda —
+      destination: res.destination || '—', // idem
+      weight_lb: res.weight_lb ?? null,    // idem
+      updated_at: res.lastUpdate || null,
+      ups_tracking: res.ups || '',
+      timeline: (res.timeline || []).map(ev => ({
+        title: ev.estado || ev.title || 'Evento',
+        date: ev.fecha || ev.date || '',
+        description: ev.ubicacion || ev.description || ''
+      }))
+    };
+  }
+
+  // Cualquier otro formato: intenta normalizar lo mínimo
+  return {
+    found: false,
+    status: '—',
+    client: '—',
+    destination: '—',
+    weight_lb: null,
+    updated_at: null,
+    ups_tracking: '',
+    timeline: []
+  };
+}
+
+/* =============== Render =============== */
 function renderTimeline(timeline){
   const container = $("timeline");
   container.innerHTML = "";
@@ -52,7 +109,7 @@ function renderTimeline(timeline){
     container.innerHTML = "<p>Sin eventos</p>";
     return;
   }
-  // ordenar por fecha si viene fuera de orden
+  // ordenar por fecha asc o desc según prefieras (aquí asc)
   try { timeline = [...timeline].sort((a,b)=> new Date(a.date) - new Date(b.date)); } catch {}
   timeline.forEach(ev=>{
     const ico = iconFor(ev.title || "");
@@ -88,8 +145,10 @@ function renderResult(data, code){
   renderTimeline(data.timeline);
 
   const wa = $("whatsappBtn");
-  const msg = encodeURIComponent(`Hola BELOURA, consulta sobre mi envío ${code}`);
-  wa.href = `https://wa.me/${CONFIG.WHATSAPP_NUMBER}?text=${msg}`;
+  if (wa) {
+    const msg = encodeURIComponent(`Hola BELOURA, consulta sobre mi envío ${code}`);
+    wa.href = `https://wa.me/${CONFIG.WHATSAPP_NUMBER}?text=${msg}`;
+  }
 }
 
 function showNotFound(){
@@ -97,10 +156,11 @@ function showNotFound(){
   $("notFound").classList.remove("hidden");
 }
 
+/* =============== Search handler =============== */
 async function handleSearch(){
-  const code = $("trackingInput").value.trim();
-  if(!code || code.length < 8){
-    alert("Ingresa tu número de guía BELOURA (ej.: BLRG123).");
+  const code = $("trackingInput").value.trim().toUpperCase();
+  if(!code || code.length < 4){
+    alert("Ingresa tu número de guía BELOURA (ej.: BLRA456).");
     return;
   }
   setLoading(true);
@@ -117,12 +177,23 @@ async function handleSearch(){
   }
 }
 
+/* =============== Bootstrap =============== */
 window.addEventListener("DOMContentLoaded", ()=>{
-  $("year").textContent = new Date().getFullYear();
-  $("searchBtn").addEventListener("click", handleSearch);
-  $("trackingInput").addEventListener("keydown", e=>{ if(e.key==="Enter") handleSearch(); });
+  const y = $("year"); if (y) y.textContent = new Date().getFullYear();
+  const btn = $("searchBtn"); if (btn) btn.addEventListener("click", handleSearch);
+  const inp = $("trackingInput"); if (inp) inp.addEventListener("keydown", e=>{ if(e.key==="Enter") handleSearch(); });
 
-  // Evita que el service worker antiguo sirva archivos cacheados (si usas SW)
+  // Soporta ?code=BLR...
+  try {
+    const qp = new URLSearchParams(location.search);
+    if (qp.has('code')) {
+      const c = qp.get('code') || '';
+      if (inp) inp.value = c;
+      handleSearch();
+    }
+  } catch {}
+
+  // Evita cache viejo de SW, si existía
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.getRegistrations()
       .then(regs => regs.forEach(r => r.update()))
