@@ -3,7 +3,7 @@
    - JSONP (evita CORS) → action=track
 */
 const CONFIG = {
-  GAS_WEB_APP_URL: "https://script.google.com/macros/s/REEMPLAZA_AQUI_TU_EXEC/exec",
+  GAS_WEB_APP_URL: "https://script.google.com/macros/s/AKfycbyA8sYGOb_QqotgF-I23ygcHhE4ytGmJk5Z4ifmcvSpbENFa5c9fgfhMDfrW9EYPv1Xlg/exec",
   TOKEN: "" // normalmente NO se usa token para 'track'; déjalo vacío
 };
 
