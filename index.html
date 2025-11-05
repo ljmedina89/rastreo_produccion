@@ -1,60 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <title>BELOURA • Rastreo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BELOURA Courier - Rastreo</title>
-
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0d1b2a">
-
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css">
+  <link href="./styles.css" rel="stylesheet" />
 </head>
 <body>
-  <header class="header">
-    <div class="brand">
-      <img src="icons/logo.png" alt="BELOURA" class="logo">
-      <h1>BELOURA</h1>
-	<h1>Courier</h1>
-    </div>
-    <p class="subtitle">Rastreo de Envíos</p>
-  </header>
+  <div class="wrap">
+    <header class="header">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M6 17L13 4h5l-7 13h-5Z" fill="#2dd4bf"/><path d="M5 20l3-6h5l-3 6H5Z" fill="#22c1a8"/></svg>
+        <span>BELOURA Courier</span>
+      </div>
+    </header>
 
-  <main class="container">
     <section class="card">
-      <label for="trackingInput" class="label">Número de guía BELOURA</label>
-      <div class="search-row">
-        <input id="trackingInput" type="text" placeholder="Ej: BLRH123" />
-        <button id="searchBtn">🔍</button>
+      <label for="codeInput" class="muted">Número de guía</label>
+      <div class="search">
+        <input id="codeInput" type="text" placeholder="Ej: BLRA456 o BLR-2025-000013" />
+        <button id="searchBtn" type="button">🔍</button>
       </div>
-      <p class="hint">Ingresa tu número de guía (formato BLRGNNN).</p>
+      <p class="muted small">Acepta códigos BELOURA con o sin guiones.</p>
+      <div id="msg" class="alert" style="display:none"></div>
     </section>
 
-    <section id="result" class="card hidden">
-      <h2>Resultado</h2>
-      <div id="statusBox" class="status-box">
-        <div class="status-line"><span class="status-label">📦 Estado:</span> <span id="statusText">—</span></div>
-        <div class="status-line"><span class="status-label">🗓️ Última actualización:</span> <span id="updatedText">—</span></div>
-        <div class="timeline" id="timeline"></div>
-      </div>
-
-      <div class="actions">
-        <a id="whatsappBtn" class="btn" target="_blank">Contactar por WhatsApp</a>
-      </div>
+    <section class="card result">
+      <div class="row"><div class="k">Estado:</div> <div id="estado" class="v">—</div></div>
+      <div class="row"><div class="k">Última actualización:</div> <div id="ultima" class="v">—</div></div>
+      <hr />
+      <div class="row"><div class="k">Línea de tiempo</div></div>
+      <ul id="timeline" class="timeline"></ul>
     </section>
 
-    <section id="notFound" class="card hidden error">
-      <h2>No encontrado</h2>
-      <p>Revisa tu número de guía o contáctanos por WhatsApp.</p>
-    </section>
-  </main>
+    <footer class="footer">
+      © <span id="year"></span> BELOURA Courier
+    </footer>
+  </div>
 
-  <footer class="footer">
-    <p>© <span id="year"></span> BELOURA Courier</p>
-  </footer>
-
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
-
