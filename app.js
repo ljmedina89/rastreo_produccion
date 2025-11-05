@@ -1,202 +1,149 @@
-/* =======================
-   BELOURA • Rastreo (app.js)
-   - Usa JSONP (sin CORS) contra Apps Script
-   - Llama action=track
-   - Normaliza respuesta a tu UI actual
-   ======================= */
-
+/* BELOURA • Rastreo minimal
+   - Solo estado actual, última actualización y timeline
+   - JSONP (evita CORS) → action=track
+*/
 const CONFIG = {
-  GAS_WEB_APP_URL: "https://script.google.com/macros/s/AKfycbyA8sYGOb_QqotgF-I23ygcHhE4ytGmJk5Z4ifmcvSpbENFa5c9fgfhMDfrW9EYPv1Xlg/exec",
-  WHATSAPP_NUMBER: "19726070561",
-  // Si protegiste create/invoice con token, track normalmente es público.
-  // Si tu backend exige token también para track, colócalo aquí:
-  TOKEN: "" // ej: "MI_TOKEN_SECRETO"
+  GAS_WEB_APP_URL: "https://script.google.com/macros/s/REEMPLAZA_AQUI_TU_EXEC/exec",
+  TOKEN: "" // normalmente NO se usa token para 'track'; déjalo vacío
 };
 
-function $(id){ return document.getElementById(id); }
+const $ = (sel) => document.querySelector(sel);
 
-function setLoading(on){
-  const btn = $("searchBtn");
-  if(!btn) return;
-  btn.disabled = on;
-  btn.textContent = on ? "Buscando..." : "🔍";
+function showMsg(text, ok=false){
+  const el = $("#msg");
+  el.textContent = text;
+  el.style.display = "block";
+  el.className = "alert " + (ok ? "ok" : "err");
+}
+function hideMsg(){ const el=$("#msg"); el.style.display="none"; }
+
+function fmtDate(d){
+  if(!d) return "—";
+  const dt = new Date(d);
+  return isNaN(dt) ? String(d) : dt.toLocaleString('es-EC', { hour12:false });
+}
+function normalizeCode(s){
+  return String(s||"").trim().toUpperCase().replace(/\s+/g,'');
 }
 
-function fmtWeight(v){
-  if (v == null || Number.isNaN(v)) return "—";
-  const n = typeof v === "number" ? v : parseFloat(String(v).replace(",", "."));
-  return Number.isFinite(n) ? n.toFixed(2) : "—";
-}
-function fmtDate(s){
-  if (!s) return "—";
-  const d = new Date(s);
-  return isNaN(d) ? s : d.toLocaleString();
-}
-
-function iconFor(title=""){
-  const t = (title||"").toLowerCase();
-  if (t.includes("recibido") || t.includes("arlington")) return "📦";
-  if (t.includes("ups") || t.includes("miami") || t.includes("transito") || t.includes("tránsito")) return "🚚";
-  if (t.includes("vuelo") || t.includes("ecuador") || t.includes("aéreo")) return "✈️";
-  if (t.includes("consolidado") || t.includes("consolidación")) return "🧱";
-  if (t.includes("aduana") || t.includes("liberación")) return "🛃";
-  if (t.includes("entregado") || t.includes("disponible")) return "✅";
-  return "📍";
-}
-
-/* =============== JSONP helper (evita CORS) =============== */
-function jsonp(url, params = {}) {
-  return new Promise((resolve, reject) => {
+/* ---------- JSONP helper ---------- */
+function jsonp(url, params={}){
+  return new Promise((resolve,reject)=>{
     const cb = 'cb_' + Math.random().toString(36).slice(2);
     params.callback = cb;
     const qs = Object.entries(params)
-      .map(([k, v]) => k + '=' + encodeURIComponent(typeof v === 'string' ? v : JSON.stringify(v)))
+      .map(([k,v]) => k + '=' + encodeURIComponent(typeof v==='string' ? v : JSON.stringify(v)))
       .join('&');
-    const s = document.createElement('script');
-    s.src = url + (url.includes('?') ? '&' : '?') + qs;
-    s.onerror = () => reject(new Error('JSONP error'));
-    window[cb] = (data) => { resolve(data); delete window[cb]; document.body.removeChild(s); };
-    document.body.appendChild(s);
+    const scr = document.createElement('script');
+    scr.src = url + (url.includes('?') ? '&' : '?') + qs;
+    scr.onerror = ()=> reject(new Error('JSONP error'));
+    window[cb] = (data)=>{ resolve(data); delete window[cb]; document.body.removeChild(scr); };
+    document.body.appendChild(scr);
   });
 }
 
-/* =============== Backend call =============== */
-async function fetchTracking(code){
-  const params = { action: 'track', code: code.trim() };
+/* ---------- Backend call ---------- */
+async function fetchTrack(code){
+  const params = { action:'track', code };
   if (CONFIG.TOKEN) params.token = CONFIG.TOKEN;
-
   const res = await jsonp(CONFIG.GAS_WEB_APP_URL, params);
 
-  // Si tu backend ya devuelve {found:bool,...} respétalo:
-  if ('found' in res) return res;
-
-  // Si devuelve el formato que te propuse: { ok, status, lastUpdate, timeline[] }
-  if ('ok' in res) {
+  // Soporta ambos formatos:
+  // A) { ok:true, status, lastUpdate, timeline:[{fecha,estado}] }
+  // B) { found:true, status, updated_at, timeline:[{date,title}] }
+  if (res && res.ok) {
     return {
-      found: !!res.ok,
-      status: res.status || '—',
-      client: res.client || '—',           // si no lo envías en track, queda —
-      destination: res.destination || '—', // idem
-      weight_lb: res.weight_lb ?? null,    // idem
-      updated_at: res.lastUpdate || null,
-      ups_tracking: res.ups || '',
+      found: true,
+      status: res.status || "—",
+      lastUpdate: res.lastUpdate || null,
       timeline: (res.timeline || []).map(ev => ({
-        title: ev.estado || ev.title || 'Evento',
-        date: ev.fecha || ev.date || '',
-        description: ev.ubicacion || ev.description || ''
+        date: ev.fecha || ev.date || null,
+        title: ev.estado || ev.title || ""
       }))
     };
   }
-
-  // Cualquier otro formato: intenta normalizar lo mínimo
-  return {
-    found: false,
-    status: '—',
-    client: '—',
-    destination: '—',
-    weight_lb: null,
-    updated_at: null,
-    ups_tracking: '',
-    timeline: []
-  };
+  if (res && res.found) {
+    return {
+      found: true,
+      status: res.status || "—",
+      lastUpdate: res.updated_at || null,
+      timeline: (res.timeline || []).map(ev => ({
+        date: ev.date || null,
+        title: ev.title || ev.estado || ""
+      }))
+    };
+  }
+  return { found:false, status:"—", lastUpdate:null, timeline:[] };
 }
 
-/* =============== Render =============== */
-function renderTimeline(timeline){
-  const container = $("timeline");
-  container.innerHTML = "";
-  if(!timeline || !timeline.length){
-    container.innerHTML = "<p>Sin eventos</p>";
+/* ---------- Render ---------- */
+function renderTrack(data){
+  $("#estado").textContent = data.status || "—";
+  $("#ultima").textContent = fmtDate(data.lastUpdate);
+
+  const list = $("#timeline");
+  list.innerHTML = "";
+
+  const events = (data.timeline || [])
+    .filter(e => e && (e.title || e.date))
+    .sort((a,b)=> new Date(b.date||0) - new Date(a.date||0)); // más reciente arriba
+
+  if (!events.length){
+    list.innerHTML = `<li class="item"><div class="s">Sin eventos</div></li>`;
     return;
   }
-  // ordenar por fecha asc o desc según prefieras (aquí asc)
-  try { timeline = [...timeline].sort((a,b)=> new Date(a.date) - new Date(b.date)); } catch {}
-  timeline.forEach(ev=>{
-    const ico = iconFor(ev.title || "");
-    const dateStr = ev.date ? fmtDate(ev.date) : "";
-    const desc = ev.description ? `<div class="desc">${ev.description}</div>` : "";
-    container.innerHTML += `
-      <div class="step">
-        <div class="bullet">${ico}</div>
-        <div class="content">
-          <div class="title">${ev.title || "Evento"}</div>
-          <div class="date">${dateStr}</div>
-          ${desc}
-        </div>
-      </div>`;
-  });
-}
 
-function renderResult(data, code){
-  $("notFound").classList.add("hidden");
-  $("result").classList.remove("hidden");
-
-  $("statusText").textContent  = data.status || "—";
-  $("clientText").textContent  = data.client || "—";
-  $("destText").textContent    = data.destination || "—";
-  $("weightText").textContent  = fmtWeight(data.weight_lb);
-  $("updatedText").textContent = fmtDate(data.updated_at);
-
-  const ups = data.ups_tracking || "";
-  $("upsText").innerHTML = ups
-    ? `<a href="https://www.ups.com/track?loc=es_US&tracknum=${encodeURIComponent(ups)}" target="_blank" rel="noopener">${ups}</a>`
-    : "—";
-
-  renderTimeline(data.timeline);
-
-  const wa = $("whatsappBtn");
-  if (wa) {
-    const msg = encodeURIComponent(`Hola BELOURA, consulta sobre mi envío ${code}`);
-    wa.href = `https://wa.me/${CONFIG.WHATSAPP_NUMBER}?text=${msg}`;
+  const frag = document.createDocumentFragment();
+  for (const ev of events){
+    const li = document.createElement('li');
+    li.className = "item";
+    li.innerHTML = `
+      <div class="t">${ev.title || "Evento"}</div>
+      <div class="s">${fmtDate(ev.date)}</div>
+    `;
+    frag.appendChild(li);
   }
+  list.appendChild(frag);
 }
 
-function showNotFound(){
-  $("result").classList.add("hidden");
-  $("notFound").classList.remove("hidden");
-}
+/* ---------- UI ---------- */
+async function doSearch(){
+  hideMsg();
+  const raw = $("#codeInput")?.value || "";
+  const code = normalizeCode(raw);
+  if (!code){ showMsg("Ingresa tu número de guía."); return; }
 
-/* =============== Search handler =============== */
-async function handleSearch(){
-  const code = $("trackingInput").value.trim().toUpperCase();
-  if(!code || code.length < 4){
-    alert("Ingresa tu número de guía BELOURA (ej.: BLRA456).");
-    return;
-  }
-  setLoading(true);
-  $("result").classList.add("hidden");
-  $("notFound").classList.add("hidden");
+  $("#estado").textContent = "Buscando…";
+  $("#ultima").textContent = "—";
+  $("#timeline").innerHTML = "";
+
   try{
-    const data = await fetchTracking(code);
-    if(data && data.found){ renderResult(data, code); } else { showNotFound(); }
-  } catch(e){
-    console.error(e);
-    showNotFound();
-  } finally {
-    setLoading(false);
+    const data = await fetchTrack(code);
+    if (!data.found) { showMsg("No encontrado o sin registros."); return; }
+    renderTrack(data);
+  }catch(err){
+    console.error(err);
+    showMsg("No se pudo consultar el rastreo.");
   }
 }
 
-/* =============== Bootstrap =============== */
-window.addEventListener("DOMContentLoaded", ()=>{
-  const y = $("year"); if (y) y.textContent = new Date().getFullYear();
-  const btn = $("searchBtn"); if (btn) btn.addEventListener("click", handleSearch);
-  const inp = $("trackingInput"); if (inp) inp.addEventListener("keydown", e=>{ if(e.key==="Enter") handleSearch(); });
+window.addEventListener('DOMContentLoaded', ()=>{
+  $("#year").textContent = new Date().getFullYear();
+  $("#searchBtn").addEventListener('click', doSearch);
+  $("#codeInput").addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
 
-  // Soporta ?code=BLR...
-  try {
-    const qp = new URLSearchParams(location.search);
-    if (qp.has('code')) {
-      const c = qp.get('code') || '';
-      if (inp) inp.value = c;
-      handleSearch();
+  // ?code=BLR-XXXX
+  try{
+    const qs = new URLSearchParams(location.search);
+    if (qs.has('code')){
+      const c = qs.get('code') || "";
+      $("#codeInput").value = c;
+      doSearch();
     }
-  } catch {}
+  }catch{}
 
-  // Evita cache viejo de SW, si existía
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.getRegistrations()
-      .then(regs => regs.forEach(r => r.update()))
-      .catch(()=>{});
+  // Limpia SW antiguos si tuvieses
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.update())).catch(()=>{});
   }
 });
